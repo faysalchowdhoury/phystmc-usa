@@ -33,7 +33,33 @@ flowchart LR
     F1 & F2 & F3 & F4 --> G[Split-screen dashboard<br/>+ tables + figures]
 ```
 
-## Results (real clip, measured)
+## Ground-truth validation (primary result)
+
+The core claim is validated against **real ground truth**, not by construction: 78
+real NGSIM I-80 trajectories (10 Hz) are decimated to 10/5/2 Hz, corrupted with
+σ=0.5 m detection noise, and each reconstruction is scored (MAE) against
+Savitzky-Golay ground-truth kinematics.
+
+| Hz | Method | Speed MAE (m/s) | **Accel MAE (m/s²)** |
+|--:|---|--:|--:|
+| 10 | Raw finite-diff | 2.82 | **24.52** |
+| 10 | EMA + clamp | 2.61 | 4.14 |
+| 10 | **Constrained smoother** | **0.51** | **2.12** |
+| 5 | Raw finite-diff | 1.41 | 6.13 |
+| 5 | **Constrained smoother** | **0.55** | **1.51** |
+| 2 | Raw finite-diff | 0.71 | 1.61 |
+| 2 | **Constrained smoother** | 0.90 | **1.83** |
+
+Acceleration drives emissions and safety, and is where naive differencing fails: at
+10 Hz its accel error (24.5 m/s²) is **12× the smoother's (2.12)**. The constrained
+smoother gives the lowest acceleration error at every rate and lowest speed error at
+≥5 Hz. **Honest nuance:** at 2 Hz, raw speed (0.71) slightly beats the smoother
+(0.90) — sparse sampling self-denoises — so the smoother's edge is acceleration and
+higher frame rates. Full table: `outputs/tables/ngsim_validation.md`.
+
+![NGSIM ground-truth validation](outputs/figures/fig4_ngsim_ground_truth_validation.png)
+
+## Operational demonstration (recorded clip, measured)
 
 Multi-FPS ablation — Baseline raw tracker vs **PhysTMC-USA** (physics filter):
 
@@ -58,6 +84,8 @@ without changing vehicle counts. Full table: `outputs/tables/ablation_results.md
 
 ```bash
 pip install ultralytics supervision opencv-python-headless scipy pandas numpy matplotlib tabulate
+python scripts/fetch_ngsim.py             # cache real NGSIM I-80 ground-truth trajectories
+python scripts/run_ngsim_validation.py    # ground-truth validation table + fig4 (primary result)
 python scripts/fetch_usdot_feed.py        # probe MDOT CHART, cache real recorded clip + metadata
 python scripts/run_ablation_suite.py      # detect(cached) + 6-config ablation + tables + BSM + videos
 python scripts/make_figures.py            # 300 DPI figures (fig1-3)
@@ -81,6 +109,7 @@ CO₂, virtual J2735 BSM counter). A 15-second highlight is in
 ```
 data/raw/            real recorded clip, reference frame, provenance metadata
 src/kinematics.py    homography, physics kinematic filter, VT-Micro CO2, PET
+src/validation.py    constrained smoother + NGSIM ground-truth validation (primary)
 src/tracker.py       ByteTrack-style IoU + velocity tracker
 src/hcm7_audit.py    HCM 7th Ed. delay / v-c / PHF / LOS
 src/v2x_bsm.py       virtual SAE J2735 BSM encoder (CSV + JSONL)
@@ -93,10 +122,12 @@ docs/                grant concept paper + IEEE TITS manuscript draft
 
 ## Honest limitations
 
-Absolute scale is uncalibrated (approximate homography on a non-surveyed, non-U.S.
-clip); PET is frame-rate sensitive; single short clip. The physics-informed
-frame-rate robustness (spike elimination, CO₂-inflation suppression, count integrity)
-is the validated contribution. See the manuscript's Limitations section.
+The kinematic method is validated against **real NGSIM ground truth** (above), but the
+operational video demonstration runs on a *different*, uncalibrated, non-U.S. clip, so
+its absolute speeds/emissions are approximate. The smoother's speed advantage narrows
+at 2 Hz; PET is frame-rate sensitive; and the demo clip is not a surveyed DOT site. A
+single-platform, geo-surveyed deployment unifying validation and live auditing is the
+next step. See the manuscript's Limitations section.
 
 ## License
 
