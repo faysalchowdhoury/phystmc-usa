@@ -1,0 +1,11 @@
+# regenerable via scripts/fetch_usdot_feed.py and the detection pass
+data/raw/source_traffic.mp4
+outputs/data/detections_cache.npz
+# python
+__pycache__/
+*.pyc
+.venv/
+# scratch previews
+data/raw/_*.jpg
+outputs/videos/_*.jpg
+yolo11*.pt

@@ -1,0 +1,7 @@
+configuration,tracker,fps,unique_tracks,total_count,count_MAPE_pct_vs_native,GEH_vs_native,mean_speed_mph,unphysical_accel_spike_pct,mean_vtmicro_co2_gps,co2_drift_pct_vs_native,pet_conflicts,hcm7_control_delay_s,hcm7_los,hcm7_vc,phf,bsm_records
+Baseline@25fps,Baseline raw,25.0,15,8,0.0,0.0,35.08,94.96,1.7024,29.45,21,26.63,C,0.826,0.667,2562
+PhysTMC@25fps,PhysTMC-USA,25.0,15,8,0.0,0.0,15.06,0.0,1.3151,0.0,21,26.63,C,0.826,0.667,2562
+Baseline@5fps,Baseline raw,5.0,13,8,0.0,0.0,25.96,47.86,1.5378,16.93,11,26.63,C,0.826,0.667,491
+PhysTMC@5fps,PhysTMC-USA,5.0,13,8,0.0,0.0,16.83,0.0,1.399,6.38,11,26.63,C,0.826,0.667,491
+Baseline@2fps,Baseline raw,2.0,8,6,25.0,0.76,21.44,21.26,1.5322,16.51,5,20.67,C,0.62,0.75,174
+PhysTMC@2fps,PhysTMC-USA,2.0,8,6,25.0,0.76,18.29,0.0,1.4773,12.33,5,20.67,C,0.62,0.75,174

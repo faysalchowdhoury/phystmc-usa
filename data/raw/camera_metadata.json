@@ -1,0 +1,26 @@
+{
+  "provenance": {
+    "note": "HONEST PROVENANCE. Live U.S. DOT video could not be captured from this environment: MDOT CHART video endpoints return HTTP 404, no system ffmpeg is available, and public DOT still-image snapshots refresh far too slowly (~0.1 FPS observed) to reconstruct vehicle trajectories. Per an explicit decision to use a real recorded traffic video rather than fabricate frames, this project runs on a genuinely real, publicly distributed overhead highway-traffic recording.",
+    "source_name": "Roboflow 'supervision' example video (vehicles.mp4)",
+    "source_url": "https://media.roboflow.com/supervision/video-examples/vehicles.mp4",
+    "retrieved_utc": "2026-11-19",
+    "scene_type": "Fixed elevated (overpass) oblique view of a divided multi-lane highway with a median barrier",
+    "apparent_region": "European-style motorway (NOT a U.S. DOT camera); used here as a representative real overhead highway-traffic testbed",
+    "native_resolution": "3840x2160",
+    "native_fps": 25.0,
+    "duration_s": 21.5,
+    "frames": 538
+  },
+  "us_standard_methods_applied": [
+    "HCM 7th Edition arterial/uninterrupted-flow metrics",
+    "SAE J2735 Basic Safety Message (MsgID 20) virtual telemetry encoding",
+    "VT-Micro instantaneous CO2 emission model",
+    "Post-Encroachment Time (PET) surrogate safety conflicts"
+  ],
+  "calibration": {
+    "method": "Approximate 4-point ground-plane homography from visible lane geometry",
+    "assumed_lane_width_m": 3.6,
+    "assumed_lane_width_note": "Standard highway lane width used to set metric scale; the scene is not U.S., so absolute speeds/emissions are approximate. Ablation claims (count stability, unphysical-acceleration suppression, GEH) are scale-invariant.",
+    "direction_convention": "Screen-vertical travel; upstream (far) and downstream (near) gates per carriageway"
+  }
+}
