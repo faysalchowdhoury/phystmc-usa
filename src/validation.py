@@ -27,34 +27,63 @@ from .kinematics import ACCEL_MIN, ACCEL_MAX, MAX_SPEED_MPS
 # NGSIM ground-truth trajectories
 # --------------------------------------------------------------------------- #
 def load_trajectories(path: str, min_len: int = 150, max_vehicles: int = 300):
-    """Return list of dicts with t[s], y[m] (position), and ground-truth v[m/s],
-    a[m/s^2] from Savitzky-Golay differentiation of the full-rate positions."""
+    """Return list of dicts with t[s], y[m] (position), and INDEPENDENT ground-truth
+    v[m/s], a[m/s^2] obtained from a quartic smoothing spline fit to the full-rate
+    clean positions. The spline truth uses a different estimator and basis than any
+    tested reconstruction (which see only decimated, noised positions), avoiding
+    truth/method circularity."""
     import pandas as pd
-    from scipy.signal import savgol_filter
+    from scipy.interpolate import UnivariateSpline
     df = pd.read_csv(path, usecols=["vehicle_id", "frame_id", "local_y"])
     df = df.dropna(subset=["local_y"])
     trajs = []
+    dt = 0.1
     for vid, g in df.groupby("vehicle_id"):
         g = g.sort_values("frame_id").drop_duplicates("frame_id")
-        # keep only contiguous 10 Hz runs (no missing frames)
-        fr = g["frame_id"].to_numpy(int)
-        if len(g) < min_len or (np.diff(fr) != 1).mean() > 0.02:
+        fr_all = g["frame_id"].to_numpy(int)
+        y_all = g["local_y"].to_numpy(float)
+        # NGSIM reuses vehicle_id across time periods/segments; split into contiguous
+        # runs wherever the frame sequence or longitudinal position breaks.
+        if len(fr_all) < 2:
             continue
-        y = g["local_y"].to_numpy(float)
-        dt = 0.1
-        # reject known NGSIM position artifacts (non-physical jumps/kinematics)
-        if np.ptp(y) < 20 or np.abs(np.diff(y)).max() > 5.0:   # >50 m/s step
-            continue
-        w = 11
-        v = savgol_filter(y, w, 3, deriv=1, delta=dt)   # ground-truth speed
-        a = savgol_filter(y, w, 3, deriv=2, delta=dt)   # ground-truth acceleration
-        if np.abs(v).max() > MAX_SPEED_MPS or np.abs(a).max() > 20.0:
-            continue
-        t = (fr - fr[0]) * dt
-        trajs.append({"t": t, "y": y, "v": v, "a": a})
-        if len(trajs) >= max_vehicles:
-            break
+        brk = np.where((np.diff(fr_all) > 5) | (np.abs(np.diff(y_all)) > 10))[0] + 1
+        for seg in np.split(np.arange(len(fr_all)), brk):
+            if len(seg) < min_len:
+                continue
+            fr = fr_all[seg]; y0 = y_all[seg]
+            fr_u = np.arange(fr[0], fr[-1] + 1)
+            if len(fr_u) < min_len or (np.diff(fr).max() > 5):
+                continue
+            y = np.interp(fr_u, fr, y0)
+            t = (fr_u - fr_u[0]) * dt
+            _maybe_add(trajs, t, y)
+            if len(trajs) >= max_vehicles:
+                return trajs
     return trajs
+
+
+def _maybe_add(trajs, t, y):
+    """De-spike, fit independent spline ground truth, and append if physical."""
+    from scipy.interpolate import UnivariateSpline
+    from scipy.ndimage import median_filter
+    med = median_filter(y, size=5, mode="nearest")
+    dev = np.abs(y - med)
+    mad = np.median(dev) + 1e-6
+    outliers = dev > 8.0 * mad
+    if outliers.mean() > 0.02:                       # too corrupted to trust
+        return
+    y = np.where(outliers, med, y)
+    if np.ptp(y) < 20 or np.abs(np.diff(y)).max() > 5.0:
+        return
+    try:
+        sp = UnivariateSpline(t, y, k=4, s=len(t) * 0.03)   # independent truth
+    except Exception:
+        return
+    v = sp.derivative(1)(t)
+    a = sp.derivative(2)(t)
+    if np.abs(v).max() > MAX_SPEED_MPS or np.abs(a).max() > 25.0:
+        return
+    trajs.append({"t": t, "y": y, "v": v, "a": a})
 
 
 # --------------------------------------------------------------------------- #
@@ -102,7 +131,64 @@ def recon_smoother(t, y, lam=12.0):
     return v, a
 
 
-RECONSTRUCTORS = {"raw": recon_raw, "ema_clamp": recon_ema_clamp, "smoother": recon_smoother}
+def recon_savgol(t, y):
+    """Standard baseline: Savitzky-Golay differentiation of the sparse noisy
+    positions (window adapted to length)."""
+    from scipy.signal import savgol_filter
+    n = len(y)
+    if n < 5:
+        return recon_raw(t, y)
+    w = min(n if n % 2 else n - 1, 9)
+    w = max(5, w if w % 2 else w - 1)
+    dt = t[1] - t[0]
+    v = savgol_filter(y, w, 2, deriv=1, delta=dt)
+    a = savgol_filter(y, w, 2, deriv=2, delta=dt)
+    return v, a
+
+
+def recon_kalman(t, y, sigma_pos=0.5, sigma_jerk=3.0):
+    """Standard baseline: constant-acceleration Kalman filter + RTS smoother.
+    State [pos, vel, acc], position measurements, jerk process noise."""
+    n = len(y)
+    if n < 3:
+        return recon_raw(t, y)
+    dt = float(t[1] - t[0])
+    F = np.array([[1, dt, 0.5 * dt * dt], [0, 1, dt], [0, 0, 1]], float)
+    H = np.array([[1.0, 0.0, 0.0]])
+    q = sigma_jerk ** 2
+    Q = q * np.array([[dt**5 / 20, dt**4 / 8, dt**3 / 6],
+                      [dt**4 / 8, dt**3 / 3, dt**2 / 2],
+                      [dt**3 / 6, dt**2 / 2, dt]], float)
+    R = np.array([[sigma_pos ** 2]])
+    x = np.array([y[0], (y[1] - y[0]) / dt, 0.0])
+    P = np.eye(3) * 10.0
+    xs_f, Ps_f, xs_p, Ps_p = [], [], [], []
+    for k in range(n):
+        if k > 0:
+            x = F @ x; P = F @ P @ F.T + Q
+        xs_p.append(x.copy()); Ps_p.append(P.copy())
+        S = H @ P @ H.T + R
+        K = (P @ H.T) @ np.linalg.inv(S)
+        x = x + (K @ (np.array([y[k]]) - H @ x)).ravel()
+        P = (np.eye(3) - K @ H) @ P
+        xs_f.append(x.copy()); Ps_f.append(P.copy())
+    # RTS backward smoother
+    xs = [a.copy() for a in xs_f]
+    Ps = [a.copy() for a in Ps_f]
+    for k in range(n - 2, -1, -1):
+        C = Ps_f[k] @ F.T @ np.linalg.inv(Ps_p[k + 1])
+        xs[k] = xs_f[k] + C @ (xs[k + 1] - xs_p[k + 1])
+    v = np.array([s[1] for s in xs]); a = np.array([s[2] for s in xs])
+    return v, a
+
+
+RECONSTRUCTORS = {
+    "raw": recon_raw,                 # naive baseline
+    "savgol": recon_savgol,           # standard baseline
+    "kalman": recon_kalman,           # standard baseline (RTS smoother)
+    "ema_clamp": recon_ema_clamp,     # streaming physics filter
+    "smoother": recon_smoother,       # proposed constrained smoother
+}
 
 
 # --------------------------------------------------------------------------- #
@@ -136,7 +222,7 @@ def run_validation(trajs, native_hz: float = 10.0, rates=(10.0, 5.0, 2.0),
             v_ref = v_true[idx]; a_ref = a_true[idx]
             sl = slice(1, len(idx) - 1)                      # drop boundary samples
             for m, fn in RECONSTRUCTORS.items():
-                vr, ar = fn(td, yd)
+                vr, ar = fn(td, yd, sigma_pos=max(noise_m, 1e-3)) if m == "kalman" else fn(td, yd)
                 acc[(m, hz)]["ae_v"].append(np.abs(vr[sl] - v_ref[sl]))
                 acc[(m, hz)]["ae_a"].append(np.abs(ar[sl] - a_ref[sl]))
                 acc[(m, hz)]["unphys"] += int(np.sum((np.abs(ar[sl]) > ACCEL_MAX) |

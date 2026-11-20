@@ -33,31 +33,34 @@ flowchart LR
     F1 & F2 & F3 & F4 --> G[Split-screen dashboard<br/>+ tables + figures]
 ```
 
-## Ground-truth validation (primary result)
+## Multi-site ground-truth benchmark (primary result)
 
-The core claim is validated against **real ground truth**, not by construction: 78
-real NGSIM I-80 trajectories (10 Hz) are decimated to 10/5/2 Hz, corrupted with
-σ=0.5 m detection noise, and each reconstruction is scored (MAE) against
-Savitzky-Golay ground-truth kinematics.
+The core claim is validated against **real ground truth**, not by construction. Real
+NGSIM trajectories from **two freeway sites** (I-80, 418 tracks; US-101, 784 tracks)
+are decimated to 10/5/2 Hz, corrupted with detection noise, and each reconstruction
+is scored (MAE) against an **independent spline ground truth**. Five methods compared.
 
-| Hz | Method | Speed MAE (m/s) | **Accel MAE (m/s²)** |
-|--:|---|--:|--:|
-| 10 | Raw finite-diff | 2.82 | **24.52** |
-| 10 | EMA + clamp | 2.61 | 4.14 |
-| 10 | **Constrained smoother** | **0.51** | **2.12** |
-| 5 | Raw finite-diff | 1.41 | 6.13 |
-| 5 | **Constrained smoother** | **0.55** | **1.51** |
-| 2 | Raw finite-diff | 0.71 | 1.61 |
-| 2 | **Constrained smoother** | 0.90 | **1.83** |
+**Accel MAE @ 10 Hz (lower is better):**
 
-Acceleration drives emissions and safety, and is where naive differencing fails: at
-10 Hz its accel error (24.5 m/s²) is **12× the smoother's (2.12)**. The constrained
-smoother gives the lowest acceleration error at every rate and lowest speed error at
-≥5 Hz. **Honest nuance:** at 2 Hz, raw speed (0.71) slightly beats the smoother
-(0.90) — sparse sampling self-denoises — so the smoother's edge is acceleration and
-higher frame rates. Full table: `outputs/tables/ngsim_validation.md`.
+| Method | I-80 | US-101 |
+|---|--:|--:|
+| Raw finite-diff | 24.66 | 24.49 |
+| Savitzky-Golay | 4.93 | 4.61 |
+| EMA + clamp | 3.97 | 3.70 |
+| Constrained smoother (ours) | 2.26 | 2.06 |
+| **Kalman RTS (recommended)** | **0.94** | **0.54** |
 
-![NGSIM ground-truth validation](outputs/figures/fig4_ngsim_ground_truth_validation.png)
+The ranking is **identical at both independent sites**. The standard **Kalman RTS
+smoother is the best** — ≈26× lower acceleration error than naive differencing at 10
+Hz — and the most noise-robust (accel MAE 0.86→1.48 as σ goes 0.25→2 m, vs raw
+12.7→97.8; Fig 5). **Honest finding:** our constrained smoother is a competitive
+second but does **not** beat the standard Kalman — reported as measured, not spun as a
+novel winner. At 2 Hz, raw speed becomes competitive (sparse sampling self-denoises),
+so the smoothers' edge is acceleration and higher frame rates. Full tables:
+`outputs/tables/ngsim_validation.md`, `ngsim_noise_sweep.csv`.
+
+![NGSIM multi-site benchmark](outputs/figures/fig4_ngsim_ground_truth_validation.png)
+![Noise sensitivity](outputs/figures/fig5_noise_sensitivity.png)
 
 ## Operational demonstration (recorded clip, measured)
 

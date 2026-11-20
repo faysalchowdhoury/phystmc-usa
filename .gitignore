@@ -3,6 +3,7 @@ data/raw/source_traffic.mp4
 outputs/data/detections_cache.npz
 # regenerable via scripts/fetch_ngsim.py (USDOT ITS DataHub)
 data/raw/ngsim_i80.csv.gz
+data/raw/ngsim_us101.csv.gz
 # python
 __pycache__/
 *.pyc

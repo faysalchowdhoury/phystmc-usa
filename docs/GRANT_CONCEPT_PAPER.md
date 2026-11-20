@@ -41,12 +41,14 @@ telemetry — turning a legacy low-FPS camera into a digital-twin sensor.
 
 ### 3. Preliminary Results (measured)
 
-**Ground-truth validation (real NGSIM I-80).** Decimating 78 real 10-Hz vehicle
-trajectories to low frame rates (+0.5 m detection noise) and scoring against
-Savitzky-Golay ground truth, our constrained-smoother reconstruction recovers true
-**acceleration** with MAE **2.12 vs 24.52 m/s² for naive differencing at 10 Hz — a
-12× reduction** — and true speed to 0.51 m/s. This is a ground-truth-validated,
-non-tautological result (not merely envelope compliance).
+**Multi-site ground-truth benchmark (real NGSIM).** Decimating real 10-Hz
+trajectories from two freeway sites (I-80, 418 tracks; US-101, 784 tracks) to low
+frame rates (+detection noise) and scoring against independent spline ground truth, a
+**Kalman RTS smoother** recovers true **acceleration** with MAE **0.94 (I-80) / 0.54
+(US-101) vs ≈24.5 m/s² for naive differencing at 10 Hz — a ≈26–45× reduction** — with
+an identical method ranking at both sites and robustness across a σ=0.25–2 m noise
+sweep. This is a ground-truth-validated, non-tautological result (recovery of *true*
+motion, not envelope compliance).
 
 **Operational demonstration (real recorded highway video).** Across 25 / 5 / 2 FPS:
 

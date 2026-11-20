@@ -12,16 +12,16 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "data/raw/ngsim_i80.csv.gz"
 BASE = "https://data.transportation.gov/resource/8ect-6jqj.json"
 COLS = ["vehicle_id", "frame_id", "local_y", "v_vel", "v_acc"]
 FT_TO_M = 0.3048
 PAGE = 50000
 MAX_ROWS = 1_000_000
+LOCATIONS = {"i-80": "ngsim_i80.csv.gz", "us-101": "ngsim_us101.csv.gz"}
 
 
-def page(offset: int):
-    params = {"$select": ",".join(COLS), "$where": "location='i-80'",
+def page(location: str, offset: int):
+    params = {"$select": ",".join(COLS), "$where": f"location='{location}'",
               "$order": "vehicle_id,frame_id", "$limit": PAGE, "$offset": offset}
     url = BASE + "?" + urllib.parse.urlencode(params, safe="(),'=")
     req = urllib.request.Request(url, headers={"User-Agent": "phystmc-usa/1.0"})
@@ -29,33 +29,44 @@ def page(offset: int):
         return json.loads(r.read().decode())
 
 
-def main():
-    if OUT.exists() and OUT.stat().st_size > 1_000_000:
-        print("already cached:", OUT)
+def fetch(location: str):
+    out = ROOT / "data/raw" / LOCATIONS[location]
+    if out.exists() and out.stat().st_size > 1_000_000:
+        print("already cached:", out)
         return
-    OUT.parent.mkdir(parents=True, exist_ok=True)
+    out.parent.mkdir(parents=True, exist_ok=True)
     n, offset = 0, 0
-    with gzip.open(OUT, "wt", newline="", encoding="utf-8") as fh:
+    with gzip.open(out, "wt", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=COLS)
         w.writeheader()
         while n < MAX_ROWS:
-            rows = page(offset)
+            rows = page(location, offset)
             if not rows:
                 break
             for row in rows:
-                out = {c: row.get(c, "") for c in COLS}
+                rec = {c: row.get(c, "") for c in COLS}
                 for c in ("local_y", "v_vel", "v_acc"):   # feet -> SI metres
                     try:
-                        out[c] = float(out[c]) * FT_TO_M
+                        rec[c] = float(rec[c]) * FT_TO_M
                     except (TypeError, ValueError):
-                        out[c] = ""
-                w.writerow(out)
+                        rec[c] = ""
+                w.writerow(rec)
             n += len(rows)
-            print(f"  {n} rows", flush=True)
+            print(f"  {location}: {n} rows", flush=True)
             if len(rows) < PAGE:
                 break
             offset += PAGE
-    print(f"wrote {OUT} ({n} rows)")
+    print(f"wrote {out} ({n} rows)")
+
+
+def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--location", default="all", choices=["i-80", "us-101", "all"])
+    args = ap.parse_args()
+    locs = list(LOCATIONS) if args.location == "all" else [args.location]
+    for loc in locs:
+        fetch(loc)
 
 
 if __name__ == "__main__":
